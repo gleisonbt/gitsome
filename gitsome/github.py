@@ -77,6 +77,15 @@ class GitHub(object):
     def base_url(self):
         return self.config.enterprise_url or self._base_url
 
+
+    def __run_query(self, query):
+        URL = 'https://api.github.com/graphql'
+        request = requests.post(URL, json=query,auth=HTTPBasicAuth('gleisonbt', 'Aleister93'))
+        if request.status_code == 200:
+            return request.json()
+        else:
+            raise Exception("Query failed to run by returning code of {}.
+
     def add_base_url(self, url):
         """Add the base url if it is not already part of the given url.
 
