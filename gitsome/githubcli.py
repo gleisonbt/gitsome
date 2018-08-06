@@ -251,7 +251,8 @@ class GitHubCli(object):
         :param pager: Determines whether to show the output in a pager,
             if available.
         """
-        github.followers(user, pager)
+        github.followers_graphQL(user, pager)
+        #github.followers(user, pager)
 
     @cli.command()
     @click.argument('user', required=False)
@@ -279,7 +280,8 @@ class GitHubCli(object):
         :param pager: Determines whether to show the output in a pager,
             if available.
         """
-        github.following(user, pager)
+        #github.following(user, pager)
+        github.following_graphQL(user, pager)
 
     @cli.command('gitignore-template')
     @click.argument('language')

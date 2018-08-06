@@ -37,6 +37,14 @@ from .view_entry import ViewEntry
 from .web_viewer import WebViewer
 from .utils import TextUtils
 
+import requests
+
+from requests.auth import HTTPBasicAuth
+
+class User:
+    def __init__(self, login):
+        self.login = login
+
 
 class GitHub(object):
     """Provide integration with the GitHub API.
@@ -84,7 +92,7 @@ class GitHub(object):
         if request.status_code == 200:
             return request.json()
         else:
-            raise Exception("Query failed to run by returning code of {}.
+            raise Exception("Query failed to run by returning code of {}.")
 
     def add_base_url(self, url):
         """Add the base url if it is not already part of the given url.
@@ -350,6 +358,52 @@ class GitHub(object):
                 build_urls=False)
 
     @authenticate
+    def followers_graphQL(self, user, pager=False):
+        """List all followers and the total follower count.
+
+        :type user: str
+        :param user: The user login (optional).
+            If None, returns the followers of the logged in user.
+
+        :type pager: bool
+        :param pager: Determines whether to show the output in a pager,
+            if available.
+        """
+
+        if user is None:
+            user = self.config.user_login
+
+        query = """
+            query userFollowers($user:String!){
+                user(login: $user){
+                    followers(first:100){
+                    nodes{
+                        login
+                    }
+                    }
+                }
+            }
+        """
+
+        json = {
+            "query": query, "variables":{
+                "user": user
+            }
+        }
+
+
+        result = self.__run_query(json)
+
+        followers = result["data"]["user"]["followers"]["nodes"]
+        followers = [User(follower["login"]) for follower in followers]
+
+        self.table.build_table_setup_user(
+            followers,
+            self.formatter.format_user,
+            limit=sys.maxsize,
+            pager=pager)
+
+    @authenticate
     def followers(self, user, pager=False):
         """List all followers and the total follower count.
 
@@ -365,6 +419,52 @@ class GitHub(object):
             user = self.config.user_login
         self.table.build_table_setup_user(
             self.config.api.followers_of(user),
+            self.formatter.format_user,
+            limit=sys.maxsize,
+            pager=pager)
+
+    @authenticate
+    def following_graphQL(self, user, pager=False):
+        """List all followed users and the total followed count.
+
+        :type user: str
+        :param user: The user login.
+            If None, returns the followed users of the logged in user.
+
+        :type pager: bool
+        :param pager: Determines whether to show the output in a pager,
+            if available.
+        """
+        if user is None:
+            user = self.config.user_login
+
+        query = """
+            query userFollowing($user:String!){
+                user(login: $user){
+                    following(first:100){
+                    nodes{
+                        login
+                    }
+                    }
+                }
+            }
+        """
+
+        json = {
+            "query": query, "variables":{
+                "user": user
+            }
+        }
+
+
+        result = self.__run_query(json)
+
+        followings = result["data"]["user"]["following"]["nodes"]
+        followings = [User(following["login"]) for following in followings]
+        
+
+        self.table.build_table_setup_user(
+            self.config.api.followed_by(user),
             self.formatter.format_user,
             limit=sys.maxsize,
             pager=pager)
