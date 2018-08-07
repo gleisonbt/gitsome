@@ -238,6 +238,46 @@ class GitHub(object):
         :type text: str
         :param text: The comment text.
         """
+
+    query =   """
+        query issue($query2:String!){
+  search(query:$query2, type:ISSUE, first:100){
+    nodes{
+      ... on Issue{
+        id
+        number
+      }
+    }
+  }
+}
+
+mutation addCommentIssue($subjectId:ID!, $body:String!, $clientMutationId:String!){
+  addComment(input:{subjectId:$subjectId, body:$body, clientMutationId:$clientMutationId}){
+    commentEdge{
+      node{
+        author{
+          login
+        }
+        createdAt
+      }
+    }
+  }
+}
+
+{
+  "user": "gleisonbt",
+  "repo": "controleVendas",
+  "query": "is:open is:issue author:gleisonbt",
+  "query2": "is:issue user:gleisonbt repo:findAPICLients",
+  "subjectId": "MDU6SXNzdWUzNDExNzc0ODc=",
+  "body": "exemplo de criação de comentário",
+  "clientMutationId": "999"
+}
+
+        """
+
+
+
         try:
             user, repo, number = user_repo_number.split('/')
             int(number)  # Check for int
