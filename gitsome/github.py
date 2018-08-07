@@ -41,9 +41,31 @@ import requests
 
 from requests.auth import HTTPBasicAuth
 
+import arrow
+
 class User:
     def __init__(self, login):
         self.login = login
+
+ # print("entries")
+        # for entrie in view_entries:
+        #     print(entrie.item.title)
+        #     print(entrie.item.comments_count)
+        #     print(entrie.item.state)
+        #     print(entrie.item.assignee.login  or 'None')
+        #     print(entrie.item.user.login)
+
+
+class Issue:
+    def __init__(self, number, title, comments_count, state, assignee, user, created_at, repository):
+        self.title = title
+        self.number = number
+        self.comments_count = comments_count
+        self.state = state
+        self.assignee = assignee
+        self.user = user
+        self.created_at = created_at
+        self.repository = repository
 
 
 class GitHub(object):
@@ -543,8 +565,9 @@ class GitHub(object):
                'issues/' + number)
         self.web_viewer.view_url(url)
 
+
     @authenticate
-    def issues(self, issues_list, limit=1000, pager=False, sort=True):
+    def issues_graphQL(self, issues_list, limit=1000, pager=False, sort=True):
         """List all issues.
 
         :type issues_list: list
@@ -578,6 +601,139 @@ class GitHub(object):
                                pager,
                                self.formatter.format_issue)
 
+
+
+    @authenticate
+    def issues(self, issues_list, limit=1000, pager=False, sort=True):
+        """List all issues.
+
+        :type issues_list: list
+        :param issues_list: A list of `github3` Issues.
+
+        :type limit: int
+        :param limit: The number of items to display.
+
+        :type pager: bool
+        :param pager: Determines whether to show the output in a pager,
+            if available.
+
+        :type sort: bool
+        :param sort: Determines whether to sort the issues by:
+            state, repo, created_at.
+        """
+
+        view_entries = []
+        for current_issue in issues_list:
+            url = self.formatter.format_issues_url_from_issue(current_issue)
+           
+            view_entries.append(
+                ViewEntry(
+                    current_issue,
+                    url=url,
+                    sort_key_primary=current_issue.state,
+                    sort_key_secondary=current_issue.repository,
+                    sort_key_tertiary=current_issue.created_at))
+        if sort:
+            view_entries = sorted(view_entries, reverse=False)
+
+        self.table.build_table(view_entries,
+                               limit,
+                               pager,
+                               self.formatter.format_issue)
+
+
+    @authenticate
+    def issues_setup_graphQL(self, issue_filter='subscribed', issue_state='open',
+                     limit=1000, pager=False):
+        """Prepare to list all issues matching the filter.
+
+        :type issue_filter: str
+        :param issue_filter: 'assigned', 'created', 'mentioned',
+            'subscribed' (default).
+
+        :type issue_state: str
+        :param issue_state: 'all', 'open' (default), 'closed'.
+
+        :type limit: int
+        :param limit: The number of items to display.
+
+        :type pager: bool
+        :param pager: Determines whether to show the output in a pager,
+            if available.
+        """
+
+        if issue_filter == 'subscribed':
+            issue_filter = 'involves'
+        elif issue_filter == 'assigned':
+            issue_filter = 'assignee'
+        elif issue_filter == 'created':
+            issue_filter = 'author'
+        elif issue_filter == 'mentioned':
+            issue_filter = 'mentions'
+
+
+        query = """
+            query FindIssues($query:String!){
+                search(query:$query, type:ISSUE, first:100){
+                nodes{
+                ... on Issue{
+                    number
+                    author{
+                    login
+                    }
+                    title
+                    url
+                    state
+                    comments{
+                    totalCount
+                    }
+                    assignees(first:1){
+                    nodes{
+                        login
+                    }
+                    }
+                    createdAt
+                    repository{
+                    owner{
+                        login
+                    }
+                    name
+                    }
+                }
+                }
+            }
+            }
+        """
+
+        json = {
+            "query": query, "variables":{
+            "query": "is:issue is:" + issue_state + " " + issue_filter + ":"+self.config.user_login
+            }
+        }
+
+        result = self.__run_query(json)
+
+        nodes = result["data"]["search"]["nodes"]
+
+        issues = []
+
+        for node in nodes:
+            number = node["number"]
+            title = node["title"]
+            comments_count = node["comments"]["totalCount"]
+            state = node["state"]
+            if not node["assignees"]["nodes"]:
+                assignee = None
+            else:
+                assignee = node["assignees"]["nodes"][0]["login"]
+            user =  node["author"]["login"]
+            created_at = arrow.get(node["createdAt"]).datetime
+            repository = (node["repository"]["owner"]["login"],node["repository"]["name"])
+            issues.append(Issue(number, title, comments_count, state, assignee, user, created_at, repository))
+
+        self.issues(issues, limit, pager)
+                         
+
     @authenticate
     def issues_setup(self, issue_filter='subscribed', issue_state='open',
                      limit=1000, pager=False):
@@ -597,6 +753,7 @@ class GitHub(object):
         :param pager: Determines whether to show the output in a pager,
             if available.
         """
+
         self.issues(self.config.api.issues(issue_filter, issue_state),
                     limit,
                     pager)

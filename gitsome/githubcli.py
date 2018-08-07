@@ -383,7 +383,7 @@ class GitHubCli(object):
         :param pager: Determines whether to show the output in a pager,
             if available.
         """
-        github.issues_setup(issue_filter, issue_state, limit, pager)
+        github.issues_setup_graphQL(issue_filter, issue_state, limit, pager)
 
     @cli.command()
     @click.argument('license_name')
