@@ -47,17 +47,9 @@ class User:
     def __init__(self, login):
         self.login = login
 
- # print("entries")
-        # for entrie in view_entries:
-        #     print(entrie.item.title)
-        #     print(entrie.item.comments_count)
-        #     print(entrie.item.state)
-        #     print(entrie.item.assignee.login  or 'None')
-        #     print(entrie.item.user.login)
-
 
 class Issue:
-    def __init__(self, number, title, comments_count, state, assignee, user, created_at, repository):
+    def __init__(self, number=None, title=None, comments_count=None, state=None, assignee=None, user=None, created_at=None, repository=None, id=None):
         self.title = title
         self.number = number
         self.comments_count = comments_count
@@ -66,6 +58,7 @@ class Issue:
         self.user = user
         self.created_at = created_at
         self.repository = repository
+        self.id = id
 
 
 class GitHub(object):
@@ -110,7 +103,9 @@ class GitHub(object):
 
     def __run_query(self, query):
         URL = 'https://api.github.com/graphql'
-        request = requests.post(URL, json=query,auth=HTTPBasicAuth('gleisonbt', 'Aleister93'))
+        headers = {"Authorization": "Bearer 6a8fc38ff0bdb31f3941a8b214c9f8c88f2b4ea6"}
+
+        request = requests.post(URL, json=query,headers=headers)
         if request.status_code == 200:
             return request.json()
         else:
@@ -228,6 +223,7 @@ class GitHub(object):
         self.config.show_bash_completions_info()
         self.config.save_config()
 
+
     @authenticate
     def create_comment(self, user_repo_number, text):
         """Create a comment on the given issue.
@@ -238,45 +234,6 @@ class GitHub(object):
         :type text: str
         :param text: The comment text.
         """
-
-    query =   """
-        query issue($query2:String!){
-  search(query:$query2, type:ISSUE, first:100){
-    nodes{
-      ... on Issue{
-        id
-        number
-      }
-    }
-  }
-}
-
-mutation addCommentIssue($subjectId:ID!, $body:String!, $clientMutationId:String!){
-  addComment(input:{subjectId:$subjectId, body:$body, clientMutationId:$clientMutationId}){
-    commentEdge{
-      node{
-        author{
-          login
-        }
-        createdAt
-      }
-    }
-  }
-}
-
-{
-  "user": "gleisonbt",
-  "repo": "controleVendas",
-  "query": "is:open is:issue author:gleisonbt",
-  "query2": "is:issue user:gleisonbt repo:findAPICLients",
-  "subjectId": "MDU6SXNzdWUzNDExNzc0ODc=",
-  "body": "exemplo de criação de comentário",
-  "clientMutationId": "999"
-}
-
-        """
-
-
 
         try:
             user, repo, number = user_repo_number.split('/')
@@ -294,6 +251,97 @@ mutation addCommentIssue($subjectId:ID!, $body:String!, $clientMutationId:String
         else:
             click.secho('Error creating comment',
                         fg=self.config.clr_error)
+
+    @authenticate
+    def create_comment_graphQL(self, user_repo_number, text):
+        """Create a comment on the given issue.
+
+        :type user_repo_number: str
+        :param user_repo_number: The user/repo/issue_number.
+
+        :type text: str
+        :param text: The comment text.
+        """
+
+        try:
+            user, repo, number = user_repo_number.split('/')
+            int(number)  # Check for int
+        except ValueError:
+            click.secho(('Expected argument: user/repo/# and option -t '
+                         '"comment".'),
+                        fg=self.config.clr_error)
+            return
+
+        
+        query = """
+            query findIssue($query:String!){
+                search(query:$query, type:ISSUE, first:100){
+                    nodes{
+                    ... on Issue{
+                        id
+                        number
+                        repository{
+                        name
+                        }
+                    }
+                    }
+                }
+            }
+        """
+
+        json = {
+            "query": query, "variables":{
+                "query": "is:issue user:" + user + " repo:" + repo
+            }
+        }
+
+
+        result = self.__run_query(json)
+
+
+        nodes = result["data"]["search"]["nodes"]
+
+
+        for node in nodes:
+            if node["number"] == int(number) and node["repository"]["name"] == repo:
+                issue_id = node["id"]
+    
+        mutation = """
+            mutation addCommentIssue($subjectId:ID!, $body:String!, $clientMutationId:String!){
+                addComment(input:{subjectId:$subjectId, body:$body, clientMutationId:$clientMutationId}){
+                    commentEdge{
+                    node{
+                        body
+                    }
+                    }
+                }
+            }
+        """
+
+        json = {
+            "query": mutation, "variables":{
+                "subjectId": issue_id,
+                "body": text,
+                "clientMutationId": "1"
+            }
+        }
+
+
+        issue_comment = self.__run_query(json)
+
+        if issue_comment["data"] is not None:
+            click.secho('Created comment: ' + issue_comment["data"]["addComment"]["commentEdge"]["node"]["body"],
+                        fg=self.config.clr_message)
+        else:
+            click.secho('Error creating comment',
+                        fg=self.config.clr_error)
+
+        # if type(issue_comment) is not null.NullObject:
+        #     click.secho('Created comment: ' + issue_comment.body,
+        #                 fg=self.config.clr_message)
+        # else:
+        #     click.secho('Error creating comment',
+        #                 fg=self.config.clr_error)
 
     @authenticate
     def create_issue(self, user_repo, issue_title, issue_desc=''):

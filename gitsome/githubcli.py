@@ -86,7 +86,7 @@ class GitHubCli(object):
         :type text: str
         :param text: The comment text.
         """
-        github.create_comment(user_repo_number, text)
+        github.create_comment_graphQL(user_repo_number, text)
 
     @cli.command('create-issue')
     @click.argument('user_repo')
