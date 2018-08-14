@@ -1246,6 +1246,86 @@ class GitHub(object):
         self.web_viewer.view_url(self.base_url + user_repo)
 
     @authenticate
+    def search_issues_graphQL(self, query, limit=1000, pager=False):
+        """Search for all issues matching the given query.
+
+        :type query: str
+        :param query: The search query.
+
+        :type limit: int
+        :param limit: The number of items to display.
+
+        :type pager: bool
+        :param pager: Determines whether to show the output in a pager,
+            if available.
+        """
+
+        query1="""
+        query searchIssues($query:String!){
+            search(query:$query, type:ISSUE, first:100){
+                nodes{
+                ... on Issue{
+                    number
+                                author{
+                                login
+                                }
+                                title
+                                url
+                                state
+                                comments{
+                                totalCount
+                                }
+                                assignees(first:1){
+                                nodes{
+                                    login
+                                }
+                                }
+                                createdAt
+                                repository{
+                                owner{
+                                    login
+                                }
+                                name
+                                }
+                }
+                }
+            }
+        }
+        """
+
+        json = {
+            "query": query1, "variables":{
+            "query": query
+            }
+        }
+
+        click.secho('Searching for all matching issues on GitHub...',
+                    fg=self.config.clr_message)
+        
+
+        result = self.__run_query(json)
+
+        nodes = result["data"]["search"]["nodes"]
+
+        issues = []
+
+        for node in nodes:
+            number = node["number"]
+            title = node["title"]
+            comments_count = node["comments"]["totalCount"]
+            state = node["state"]
+            if not node["assignees"]["nodes"]:
+                assignee = None
+            else:
+                assignee = node["assignees"]["nodes"][0]["login"]
+            user =  node["author"]["login"]
+            created_at = arrow.get(node["createdAt"]).datetime
+            repository = (node["repository"]["owner"]["login"],node["repository"]["name"])
+            issues.append(Issue(number, title, comments_count, state, assignee, user, created_at, repository))
+
+        self.issues(issues, limit, pager, sort=False)
+
+    @authenticate
     def search_issues(self, query, limit=1000, pager=False):
         """Search for all issues matching the given query.
 
@@ -1266,6 +1346,92 @@ class GitHub(object):
         for result in results:
             issues_list.append(result.issue)
         self.issues(issues_list, limit, pager, sort=False)
+
+
+    @authenticate
+    def search_repositories_graphQL(self, query, sort, limit=1000, pager=False):
+        """Search for all repos matching the given query.
+
+        :type query: str
+        :param query: The search query.
+
+        :type sort: str
+        :param sort: Optional: 'stars', 'forks', 'updated'.
+            If not specified, sorting is done by query best match.
+
+        :type limit: int
+        :param limit: The number of items to display.
+
+        :type pager: bool
+        :param pager: Determines whether to show the output in a pager,
+            if available.
+        """
+
+        query1 = """
+        query searchRepositories($query:String!){
+            search(query:$query, type:REPOSITORY, first:100){
+            nodes{
+            ... on Repository{
+                owner{
+                            login
+                            }
+                            name
+                            primaryLanguage{
+                            name
+                            }
+                            stargazers{
+                            totalCount
+                            }
+                            forks{
+                            totalCount
+                            }
+                            updatedAt
+                            url
+                            nameWithOwner
+                            description
+            }
+            }
+        }
+        }
+        """
+
+        json = {
+            "query": query1, "variables":{
+                "query": query+" sort:"+sort
+            }    
+        }
+
+        click.secho('Searching for all matching repos on GitHub...',
+                    fg=self.config.clr_message)
+
+        result = self.__run_query(json)
+
+        nodes = result["data"]["search"]["nodes"]
+
+
+        repositories = []
+
+        for node in nodes:
+            owner = node["owner"]["login"]
+            name = node["name"]
+            if not node["primaryLanguage"]:
+                primaryLanguage = None
+            else:
+                primaryLanguage = node["primaryLanguage"]["name"]
+            stargazers_count = node["stargazers"]["totalCount"]
+            forks_count = node["forks"]["totalCount"]
+            updated_at = arrow.get(node["updatedAt"]).datetime #arrow.get(node["createdAt"]).datetime
+            clone_url = node["url"]
+            full_name = node["nameWithOwner"]
+            if not node["description"]:
+                description = None
+            else:
+                description = node["description"]
+
+            repositories.append(Repo(owner, name, primaryLanguage, stargazers_count, forks_count, updated_at, clone_url, full_name, description))
+        
+        self.repositories(repositories, limit, pager, sort=False)
+
 
     @authenticate
     def search_repositories(self, query, sort, limit=1000, pager=False):
@@ -1293,8 +1459,27 @@ class GitHub(object):
             repos.append(result.repository)
         self.repositories(repos, limit, pager, sort=False)
 
+
     @authenticate
     def starred(self, repo_filter, limit=1000, pager=False):
+        """Output starred repos.
+        :type repo_filter: str
+        :param repo_filter:  The filter for repo names.
+            Only repos matching the filter will be returned.
+            If None, outputs all starred repos.
+        :type limit: int
+        :param limit: The number of items to display.
+        :type pager: bool
+        :param pager: Determines whether to show the output in a pager,
+            if available.
+        """
+        self.repositories(self.config.api.starred(),
+                          limit,
+                          pager,
+                          repo_filter.lower())
+
+    @authenticate
+    def starred_graphQL(self, repo_filter, limit=1000, pager=False):
         """Output starred repos.
 
         :type repo_filter: str
@@ -1309,7 +1494,65 @@ class GitHub(object):
         :param pager: Determines whether to show the output in a pager,
             if available.
         """
-        self.repositories(self.config.api.starred(),
+        query="""
+        query starred{
+            viewer{
+                starredRepositories(first:100){
+                    nodes{
+                    owner{
+                    login
+                    }
+                    name
+                    primaryLanguage{
+                    name
+                    }
+                    stargazers{
+                    totalCount
+                    }
+                    forks{
+                    totalCount
+                    }
+                    updatedAt
+                    url
+                    nameWithOwner
+                    description
+                }
+                }
+            }
+        }
+        """
+
+        json = {
+            "query": query, "variables":{
+            }    
+        }
+
+        result = self.__run_query(json)
+
+        nodes = result["data"]["viewer"]["starredRepositories"]["nodes"]
+
+        repositories = []
+
+        for node in nodes:
+            owner = node["owner"]["login"]
+            name = node["name"]
+            if not node["primaryLanguage"]:
+                primaryLanguage = None
+            else:
+                primaryLanguage = node["primaryLanguage"]["name"]
+            stargazers_count = node["stargazers"]["totalCount"]
+            forks_count = node["forks"]["totalCount"]
+            updated_at = arrow.get(node["updatedAt"]).datetime #arrow.get(node["createdAt"]).datetime
+            clone_url = node["url"]
+            full_name = node["nameWithOwner"]
+            if not node["description"]:
+                description = None
+            else:
+                description = node["description"]
+
+            repositories.append(Repo(owner, name, primaryLanguage, stargazers_count, forks_count, updated_at, clone_url, full_name, description))
+
+        self.repositories(repositories,
                           limit,
                           pager,
                           repo_filter.lower())
