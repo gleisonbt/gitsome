@@ -44,8 +44,15 @@ from requests.auth import HTTPBasicAuth
 import arrow
 
 class User:
-    def __init__(self, login):
+    def __init__(self, login, company, location, email, type, followers_count, following_count):
         self.login = login
+        self.company = company
+        self.location = location
+        self.email = email
+        self.type = type
+        self.followers_count = followers_count
+        self.following_count = following_count
+
 
 
 class Issue:
@@ -1618,6 +1625,89 @@ class GitHub(object):
                 self.formatter.format_trending_entry,
                 limit=sys.maxsize,
                 pager=pager)
+
+    @authenticate
+    def user_graphQL(self, user_id, browser=False, text_avatar=False,
+             limit=1000, pager=False):
+        """List information about the logged in user.
+
+        :type user_id: str
+        :param user_id: The user id/login.
+            If None, returns followers of the logged in user.
+
+        :type browser: bool
+        :param browser: Determines whether to view the profile
+            in a browser, or in the terminal.
+
+        :type text_avatar: bool
+        :param text_avatar: Determines whether to view the profile
+            avatar in plain text instead of ansi (default).
+            On Windows this value is always set to True due to lack of
+            support of `img2txt` on Windows.
+
+        :type limit: int
+        :param limit: The number of items to display.
+
+        :type pager: bool
+        :param pager: Determines whether to show the output in a pager,
+            if available.
+        """
+
+        query1="""
+        query type($query:String!){
+        search(query:$query, type:USER, first:100){
+            nodes{
+            ... on Actor{
+                avatarUrl
+                login
+                __typename
+            }
+            }
+        }
+        }
+        """
+
+        if browser:
+            webbrowser.open(self.base_url + user_id)
+        else:
+            user = self.config.api.user(user_id)
+            if type(user) is null.NullObject:
+                click.secho('Invalid user.', fg=self.config.clr_error)
+                return
+            output = ''
+            output += click.style(self.avatar_setup(user.avatar_url,
+                                                    text_avatar))
+            output += click.style(user.login + '\n', fg=self.config.clr_primary)
+            if user.company is not None:
+                output += click.style(user.company + '\n',
+                                      fg=self.config.clr_secondary)
+            if user.location is not None:
+                output += click.style(user.location + '\n',
+                                      fg=self.config.clr_secondary)
+            if user.email is not None:
+                output += click.style(user.email + '\n',
+                                      fg=self.config.clr_secondary)
+            if user.type == 'Organization':
+                output += click.style('Organization\n\n',
+                                      fg=self.config.clr_tertiary)
+            else:
+                output += click.style(
+                    'Followers: ' + str(user.followers_count) + ' | ',
+                    fg=self.config.clr_tertiary)
+                output += click.style(
+                    'Following: ' + str(user.following_count) + '\n\n',
+                    fg=self.config.clr_tertiary)
+            output += self.repositories(self.config.api.repositories(user_id),
+                                        limit,
+                                        pager,
+                                        print_output=False)
+            if pager:
+                color = None
+                if platform.system() == 'Windows':
+                    color = True
+                click.echo_via_pager(output, color)
+            else:
+                click.secho(output)
 
     @authenticate
     def user(self, user_id, browser=False, text_avatar=False,

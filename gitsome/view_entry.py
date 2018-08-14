@@ -17,7 +17,7 @@ from __future__ import unicode_literals
 from __future__ import print_function
 
 
-class ViewEntry(object):
+ class ViewEntry(object):
     """A table entry used with the `gh view` command.
 
     :type index: int
