@@ -604,7 +604,7 @@ class GitHubCli(object):
         :param pager: Determines whether to show the output in a pager,
             if available.
         """
-        github.repositories_setup(repo_filter, limit, pager)
+        github.repositories_setup_graphQL(repo_filter, limit, pager)
 
     @cli.command('repo')
     @click.argument('user_repo')

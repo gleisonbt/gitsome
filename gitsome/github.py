@@ -61,7 +61,16 @@ class Issue:
         self.id = id
 
 class Repo:
-    def __init__(self, owner, name, language=None, stars, forks)
+    def __init__(self, owner=None, name=None, language=None, stargazers_count=None, forks_count=None, updated_at=None, clone_url=None, full_name=None, description=None):
+        self.owner = owner
+        self.name = name
+        self.language = language
+        self.stargazers_count = stargazers_count
+        self.forks_count = forks_count
+        self.updated_at = updated_at
+        self.clone_url = clone_url
+        self.full_name = full_name
+        self.description = description
 
 
 class GitHub(object):
@@ -1168,10 +1177,31 @@ class GitHub(object):
 
         nodes = result["data"]["viewer"]["repositories"]["nodes"]
 
+        nodesOrganizations = []
+        if len(result["data"]["viewer"]["organizations"]["nodes"]) == 1:
+            nodesOrganizations = result["data"]["viewer"]["organizations"]["nodes"][0]["repositories"]["nodes"]
+            nodes.extend(nodesOrganizations)
+
         repositories = []
 
         for node in nodes:
-            repositories.append()
+            owner = node["owner"]["login"]
+            name = node["name"]
+            if not node["primaryLanguage"]:
+                primaryLanguage = None
+            else:
+                primaryLanguage = node["primaryLanguage"]["name"]
+            stargazers_count = node["stargazers"]["totalCount"]
+            forks_count = node["forks"]["totalCount"]
+            updated_at = arrow.get(node["updatedAt"]).datetime #arrow.get(node["createdAt"]).datetime
+            clone_url = node["url"]
+            full_name = node["nameWithOwner"]
+            if not node["description"]:
+                description = None
+            else:
+                description = node["description"]
+
+            repositories.append(Repo(owner, name, primaryLanguage, stargazers_count, forks_count, updated_at, clone_url, full_name, description))
 
         self.repositories(repositories,
                           limit,
