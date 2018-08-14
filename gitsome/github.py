@@ -60,6 +60,9 @@ class Issue:
         self.repository = repository
         self.id = id
 
+class Repo:
+    def __init__(self, owner, name, language=None, stars, forks)
+
 
 class GitHub(object):
     """Provide integration with the GitHub API.
@@ -103,9 +106,11 @@ class GitHub(object):
 
     def __run_query(self, query):
         URL = 'https://api.github.com/graphql'
-        headers = {"Authorization": "Bearer 6a8fc38ff0bdb31f3941a8b214c9f8c88f2b4ea6"}
+        #headers = {"Authorization": "Bearer e1a886a63a2e7cb1b3486dbc8a939b79b0be1c6c"}
+        headers = {"Authorization": "Bearer "+self.config.user_token}
 
         request = requests.post(URL, json=query,headers=headers)
+
         if request.status_code == 200:
             return request.json()
         else:
@@ -654,42 +659,6 @@ class GitHub(object):
         self.web_viewer.view_url(url)
 
 
-    @authenticate
-    def issues_graphQL(self, issues_list, limit=1000, pager=False, sort=True):
-        """List all issues.
-
-        :type issues_list: list
-        :param issues_list: A list of `github3` Issues.
-
-        :type limit: int
-        :param limit: The number of items to display.
-
-        :type pager: bool
-        :param pager: Determines whether to show the output in a pager,
-            if available.
-
-        :type sort: bool
-        :param sort: Determines whether to sort the issues by:
-            state, repo, created_at.
-        """
-        view_entries = []
-        for current_issue in issues_list:
-            url = self.formatter.format_issues_url_from_issue(current_issue)
-            view_entries.append(
-                ViewEntry(
-                    current_issue,
-                    url=url,
-                    sort_key_primary=current_issue.state,
-                    sort_key_secondary=current_issue.repository,
-                    sort_key_tertiary=current_issue.created_at))
-        if sort:
-            view_entries = sorted(view_entries, reverse=False)
-        self.table.build_table(view_entries,
-                               limit,
-                               pager,
-                               self.formatter.format_issue)
-
-
 
     @authenticate
     def issues(self, issues_list, limit=1000, pager=False, sort=True):
@@ -910,6 +879,132 @@ class GitHub(object):
         output = output.replace('\\n', '\n')
         click.secho(output, fg=self.config.clr_message)
 
+    
+
+    @authenticate
+    def pull_requests_graphQL(self, limit=1000, pager=False):
+        """List all pull requests.
+
+        :type limit: int
+        :param limit: The number of items to display.
+
+        :type pager: bool
+        :param pager: Determines whether to show the output in a pager,
+            if available.
+        """
+
+        query1 = """
+        query findRepos{
+        viewer{
+            repositories(first:100){
+            nodes{
+                nameWithOwner
+                pullRequests{
+                totalCount
+                }
+            }
+            }
+            organizations(first:100){
+            nodes{
+                repositories(first:100){
+                    nodes{
+                    nameWithOwner
+                    pullRequests{
+                    totalCount
+                    }
+                    }  
+                }
+            }
+            }
+        }
+        }
+        """
+
+
+        json1 = {
+        "query": query1, "variables":{
+        }
+        }
+
+        result = self.__run_query(json1)
+
+
+        reposWithPRs = []
+        reposUser = result["data"]["viewer"]["repositories"]["nodes"]
+
+        for repo in reposUser:
+            if repo["pullRequests"]["totalCount"] > 0 :
+                reposWithPRs.append(repo["nameWithOwner"])
+
+        if len(result["data"]["viewer"]["organizations"]["nodes"]) == 1:
+            reposOrg = result["data"]["viewer"]["organizations"]["nodes"][0]["repositories"]["nodes"]
+            for repo in reposOrg:
+                if repo["pullRequests"]["totalCount"] > 0 :
+                    reposWithPRs.append(repo["nameWithOwner"])
+
+
+        query2 = """
+        query findPullRequests($query:String!){
+        search(query:$query, first:100, type:ISSUE){
+            nodes{
+            ... on PullRequest{
+                number
+                            author{
+                            login
+                            }
+                            title
+                            url
+                            state
+                            comments{
+                            totalCount
+                            }
+                            assignees(first:1){
+                            nodes{
+                                login
+                            }
+                            }
+                            createdAt
+                            repository{
+                            owner{
+                                login
+                            }
+                            name
+                            }
+            }
+            }
+        }
+        }
+        """
+
+        json2 = {}
+        issues_list = []
+
+        for repo in reposWithPRs:
+            json2 = {
+                "query": query2, "variables":{
+                "query": "is:pr repo:"+reposWithPRs[0]
+                }
+            } 
+            result = self.__run_query(json2)
+            nodes = result["data"]["search"]["nodes"]
+
+            for node in nodes:
+                number = node["number"]
+                title = node["title"]
+                comments_count = node["comments"]["totalCount"]
+                state = node["state"]
+                if not node["assignees"]["nodes"]:
+                    assignee = None
+                else:
+                    assignee = node["assignees"]["nodes"][0]["login"]
+                user =  node["author"]["login"]
+                created_at = arrow.get(node["createdAt"]).datetime
+                repository = (node["repository"]["owner"]["login"],node["repository"]["name"])
+                issues_list.append(Issue(number, title, comments_count, state, assignee, user, created_at, repository))
+
+        self.issues(issues_list, limit, pager)
+
+
     @authenticate
     def pull_requests(self, limit=1000, pager=False):
         """List all pull requests.
@@ -941,6 +1036,7 @@ class GitHub(object):
         """
         click.secho('Rate limit: ' + str(self.config.api.ratelimit_remaining),
                     fg=self.config.clr_message)
+    
 
     @authenticate
     def repositories(self, repos, limit=1000, pager=False,
@@ -992,6 +1088,96 @@ class GitHub(object):
                                       pager,
                                       self.formatter.format_repo,
                                       print_output=print_output)
+
+    @authenticate
+    def repositories_setup_graphQL(self, repo_filter, limit=1000, pager=False):
+        """Prepare to list all repos matching the given filter.
+
+        :type repo_filter: str
+        :param repo_filter:  The filter for repo names.
+            Only repos matching the filter will be returned.
+            If None, outputs all repos retrieved by the GitHub API.
+
+        :type limit: int
+        :param limit: The number of items to display.
+
+        :type pager: bool
+        :param pager: Determines whether to show the output in a pager,
+            if available.
+        """
+
+        query = """
+        query findRepos{
+            viewer{
+                repositories(first:100){
+                nodes{
+                    owner{
+                    login
+                    }
+                    name
+                    primaryLanguage{
+                    name
+                    }
+                    stargazers{
+                    totalCount
+                    }
+                    forks{
+                    totalCount
+                    }
+                    updatedAt
+                    url
+                    nameWithOwner
+                    description
+                }
+                }
+                organizations(first:100){
+                nodes{
+                    repositories(first:100){
+                        nodes{
+                    owner{
+                    login
+                    }
+                    name
+                    primaryLanguage{
+                    name
+                    }
+                    stargazers{
+                    totalCount
+                    }
+                    forks{
+                    totalCount
+                    }
+                    updatedAt
+                    url
+                    nameWithOwner
+                    description
+                }  
+                    }
+                }
+                }
+            }
+        }
+        """
+
+        json = {
+            "query": query, "variables":{
+            }    
+        }
+
+        result = self.__run_query(json)
+
+        nodes = result["data"]["viewer"]["repositories"]["nodes"]
+
+        repositories = []
+
+        for node in nodes:
+            repositories.append()
+
+        self.repositories(repositories,
+                          limit,
+                          pager,
+                          repo_filter)
+
 
     @authenticate
     def repositories_setup(self, repo_filter, limit=1000, pager=False):

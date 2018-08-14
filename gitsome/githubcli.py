@@ -554,7 +554,7 @@ class GitHubCli(object):
         :param pager: Determines whether to show the output in a pager,
             if available.
         """
-        github.pull_requests(limit, pager)
+        github.pull_requests_graphQL(limit, pager)
 
     @cli.command('rate-limit')
     @pass_github
