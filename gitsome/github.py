@@ -44,7 +44,8 @@ from requests.auth import HTTPBasicAuth
 import arrow
 
 class User:
-    def __init__(self, login, company, location, email, type, followers_count, following_count):
+    def __init__(self, login=None, company=None, location=None, email=None,
+     type=None, followers_count=None, following_count=None):
         self.login = login
         self.company = company
         self.location = location
@@ -1653,19 +1654,129 @@ class GitHub(object):
             if available.
         """
 
-        query1="""
+        queryType="""
         query type($query:String!){
         search(query:$query, type:USER, first:100){
             nodes{
             ... on Actor{
-                avatarUrl
-                login
                 __typename
             }
             }
         }
         }
         """
+        jsonType={
+            "query":queryType,"variable":{
+                "query": "user:" + user_id
+            } 
+        }
+
+        queryUser="""
+        query findUser($user:String!){
+        user(login:$user){
+            login
+            company
+            location
+            email
+            followers{
+            totalCount
+            }
+            following{
+            totalCount
+            }
+            repositories(first:100){
+            nodes{
+                owner{
+                login
+                }
+                name
+                primaryLanguage{
+                name
+                }
+                stargazers{
+                totalCount
+                }
+                forks{
+                totalCount
+                }
+                updatedAt
+                url
+                nameWithOwner
+                description
+            }
+            }
+            organizations(first:100){
+            nodes{
+                repositories(first:100){
+                nodes{
+                    owner{
+                    login
+                    }
+                    name
+                    primaryLanguage{
+                    name
+                    }
+                    stargazers{
+                    totalCount
+                    }
+                    forks{
+                    totalCount
+                    }
+                    updatedAt
+                    url
+                    nameWithOwner
+                    description
+                }
+                }
+            }
+            }
+        }
+        }
+        """
+
+        jsonUser={
+            "query":queryUser,"variable":{
+                "user": user_id
+            } 
+        }
+
+        queryOrgs="""
+        query findOrganization($org:String!){
+        organization(login:$org){
+            login
+            location
+            email
+            repositories(first:100){
+            nodes{
+                owner{
+                login
+                }
+                name
+                primaryLanguage{
+                name
+                }
+                stargazers{
+                totalCount
+                }
+                forks{
+                totalCount
+                }
+                updatedAt
+                url
+                nameWithOwner
+                description
+            }
+            }
+        }
+        }
+        """
+
+        jsonOrgs={
+            "query":queryOrgs,"variable":{
+                "org": user_id
+            } 
+        }
+
 
         if browser:
             webbrowser.open(self.base_url + user_id)
