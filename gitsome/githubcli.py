@@ -86,7 +86,7 @@ class GitHubCli(object):
         :type text: str
         :param text: The comment text.
         """
-        github.create_comment_graphQL(user_repo_number, text)
+        github.create_comment(user_repo_number, text)
 
     @cli.command('create-issue')
     @click.argument('user_repo')
@@ -251,7 +251,7 @@ class GitHubCli(object):
         :param pager: Determines whether to show the output in a pager,
             if available.
         """
-        github.followers_graphQL(user, pager)
+        github.followers(user, pager)
         #github.followers(user, pager)
 
     @cli.command()
@@ -281,7 +281,7 @@ class GitHubCli(object):
             if available.
         """
         #github.following(user, pager)
-        github.following_graphQL(user, pager)
+        github.following(user, pager)
 
     @cli.command('gitignore-template')
     @click.argument('language')
@@ -383,7 +383,7 @@ class GitHubCli(object):
         :param pager: Determines whether to show the output in a pager,
             if available.
         """
-        github.issues_setup_graphQL(issue_filter, issue_state, limit, pager)
+        github.issues_setup(issue_filter, issue_state, limit, pager)
 
     @cli.command()
     @click.argument('license_name')
@@ -554,7 +554,7 @@ class GitHubCli(object):
         :param pager: Determines whether to show the output in a pager,
             if available.
         """
-        github.pull_requests_graphQL(limit, pager)
+        github.pull_requests(limit, pager)
 
     @cli.command('rate-limit')
     @pass_github
@@ -604,7 +604,7 @@ class GitHubCli(object):
         :param pager: Determines whether to show the output in a pager,
             if available.
         """
-        github.repositories_setup_graphQL(repo_filter, limit, pager)
+        github.repositories_setup(repo_filter, limit, pager)
 
     @cli.command('repo')
     @click.argument('user_repo')
@@ -697,7 +697,7 @@ class GitHubCli(object):
         :param pager: Determines whether to show the output in a pager,
             if available.
         """
-        github.search_issues_graphQL(query, limit, pager)
+        github.search_issues(query, limit, pager)
 
     @cli.command('search-repos')
     @click.argument('query')
@@ -755,7 +755,7 @@ class GitHubCli(object):
         :param pager: Determines whether to show the output in a pager,
             if available.
         """
-        github.search_repositories_graphQL(query, sort, limit, pager)
+        github.search_repositories(query, sort, limit, pager)
 
     @cli.command()
     @click.argument('repo_filter', required=False, default='')
@@ -788,7 +788,7 @@ class GitHubCli(object):
         :param pager: Determines whether to show the output in a pager,
             if available.
         """
-        github.starred_graphQL(repo_filter, limit, pager)
+        github.starred(repo_filter, limit, pager)
 
     @cli.command()
     @click.argument('language', required=False, default='Overall')

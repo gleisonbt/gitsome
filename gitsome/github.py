@@ -265,34 +265,6 @@ class GitHub(object):
                          '"comment".'),
                         fg=self.config.clr_error)
             return
-        issue = self.config.api.issue(user, repo, number)
-        issue_comment = issue.create_comment(text)
-        if type(issue_comment) is not null.NullObject:
-            click.secho('Created comment: ' + issue_comment.body,
-                        fg=self.config.clr_message)
-        else:
-            click.secho('Error creating comment',
-                        fg=self.config.clr_error)
-
-    @authenticate
-    def create_comment_graphQL(self, user_repo_number, text):
-        """Create a comment on the given issue.
-
-        :type user_repo_number: str
-        :param user_repo_number: The user/repo/issue_number.
-
-        :type text: str
-        :param text: The comment text.
-        """
-
-        try:
-            user, repo, number = user_repo_number.split('/')
-            int(number)  # Check for int
-        except ValueError:
-            click.secho(('Expected argument: user/repo/# and option -t '
-                         '"comment".'),
-                        fg=self.config.clr_error)
-            return
 
         
         query = """
@@ -490,7 +462,7 @@ class GitHub(object):
                 build_urls=False)
 
     @authenticate
-    def followers_graphQL(self, user, pager=False):
+    def followers(self, user, pager=False):
         """List all followers and the total follower count.
 
         :type user: str
@@ -536,27 +508,7 @@ class GitHub(object):
             pager=pager)
 
     @authenticate
-    def followers(self, user, pager=False):
-        """List all followers and the total follower count.
-
-        :type user: str
-        :param user: The user login (optional).
-            If None, returns the followers of the logged in user.
-
-        :type pager: bool
-        :param pager: Determines whether to show the output in a pager,
-            if available.
-        """
-        if user is None:
-            user = self.config.user_login
-        self.table.build_table_setup_user(
-            self.config.api.followers_of(user),
-            self.formatter.format_user,
-            limit=sys.maxsize,
-            pager=pager)
-
-    @authenticate
-    def following_graphQL(self, user, pager=False):
+    def following(self, user, pager=False):
         """List all followed users and the total followed count.
 
         :type user: str
@@ -595,26 +547,6 @@ class GitHub(object):
         followings = [User(following["login"]) for following in followings]
         
 
-        self.table.build_table_setup_user(
-            self.config.api.followed_by(user),
-            self.formatter.format_user,
-            limit=sys.maxsize,
-            pager=pager)
-
-    @authenticate
-    def following(self, user, pager=False):
-        """List all followed users and the total followed count.
-
-        :type user: str
-        :param user: The user login.
-            If None, returns the followed users of the logged in user.
-
-        :type pager: bool
-        :param pager: Determines whether to show the output in a pager,
-            if available.
-        """
-        if user is None:
-            user = self.config.user_login
         self.table.build_table_setup_user(
             self.config.api.followed_by(user),
             self.formatter.format_user,
@@ -717,7 +649,7 @@ class GitHub(object):
 
 
     @authenticate
-    def issues_setup_graphQL(self, issue_filter='subscribed', issue_state='open',
+    def issues_setup(self, issue_filter='subscribed', issue_state='open',
                      limit=1000, pager=False):
         """Prepare to list all issues matching the filter.
 
@@ -807,31 +739,6 @@ class GitHub(object):
 
         self.issues(issues, limit, pager)
                          
-
-    @authenticate
-    def issues_setup(self, issue_filter='subscribed', issue_state='open',
-                     limit=1000, pager=False):
-        """Prepare to list all issues matching the filter.
-
-        :type issue_filter: str
-        :param issue_filter: 'assigned', 'created', 'mentioned',
-            'subscribed' (default).
-
-        :type issue_state: str
-        :param issue_state: 'all', 'open' (default), 'closed'.
-
-        :type limit: int
-        :param limit: The number of items to display.
-
-        :type pager: bool
-        :param pager: Determines whether to show the output in a pager,
-            if available.
-        """
-
-        self.issues(self.config.api.issues(issue_filter, issue_state),
-                    limit,
-                    pager)
-
     @authenticate
     def license(self, license_name):
         """Output the gitignore template for the given language.
@@ -899,7 +806,7 @@ class GitHub(object):
     
 
     @authenticate
-    def pull_requests_graphQL(self, limit=1000, pager=False):
+    def pull_requests(self, limit=1000, pager=False):
         """List all pull requests.
 
         :type limit: int
@@ -1021,29 +928,6 @@ class GitHub(object):
 
         self.issues(issues_list, limit, pager)
 
-
-    @authenticate
-    def pull_requests(self, limit=1000, pager=False):
-        """List all pull requests.
-
-        :type limit: int
-        :param limit: The number of items to display.
-
-        :type pager: bool
-        :param pager: Determines whether to show the output in a pager,
-            if available.
-        """
-        issues_list = []
-        repositories = self.config.api.repositories()
-        for repository in repositories:
-            repo_pulls = repository.pull_requests()
-            for repo_pull in repo_pulls:
-                url = self.formatter.format_issues_url_from_issue(repo_pull)
-                user, repo, issues, number = url.split('/')
-                repo_pull = self.config.api.pull_request(user, repo, number)
-                issues_list.append(repo_pull)
-        self.issues(issues_list, limit, pager)
-
     @authenticate
     def rate_limit(self):
         """Output the rate limit.  Not available for GitHub Enterprise.
@@ -1107,7 +991,7 @@ class GitHub(object):
                                       print_output=print_output)
 
     @authenticate
-    def repositories_setup_graphQL(self, repo_filter, limit=1000, pager=False):
+    def repositories_setup(self, repo_filter, limit=1000, pager=False):
         """Prepare to list all repos matching the given filter.
 
         :type repo_filter: str
@@ -1218,27 +1102,6 @@ class GitHub(object):
 
 
     @authenticate
-    def repositories_setup(self, repo_filter, limit=1000, pager=False):
-        """Prepare to list all repos matching the given filter.
-
-        :type repo_filter: str
-        :param repo_filter:  The filter for repo names.
-            Only repos matching the filter will be returned.
-            If None, outputs all repos retrieved by the GitHub API.
-
-        :type limit: int
-        :param limit: The number of items to display.
-
-        :type pager: bool
-        :param pager: Determines whether to show the output in a pager,
-            if available.
-        """
-        self.repositories(self.config.api.repositories(),
-                          limit,
-                          pager,
-                          repo_filter)
-
-    @authenticate
     def repository(self, user_repo):
         """Output detailed information about the given repo.
 
@@ -1254,7 +1117,7 @@ class GitHub(object):
         self.web_viewer.view_url(self.base_url + user_repo)
 
     @authenticate
-    def search_issues_graphQL(self, query, limit=1000, pager=False):
+    def search_issues(self, query, limit=1000, pager=False):
         """Search for all issues matching the given query.
 
         :type query: str
@@ -1334,30 +1197,7 @@ class GitHub(object):
         self.issues(issues, limit, pager, sort=False)
 
     @authenticate
-    def search_issues(self, query, limit=1000, pager=False):
-        """Search for all issues matching the given query.
-
-        :type query: str
-        :param query: The search query.
-
-        :type limit: int
-        :param limit: The number of items to display.
-
-        :type pager: bool
-        :param pager: Determines whether to show the output in a pager,
-            if available.
-        """
-        click.secho('Searching for all matching issues on GitHub...',
-                    fg=self.config.clr_message)
-        results = self.config.api.search_issues(query)
-        issues_list = []
-        for result in results:
-            issues_list.append(result.issue)
-        self.issues(issues_list, limit, pager, sort=False)
-
-
-    @authenticate
-    def search_repositories_graphQL(self, query, sort, limit=1000, pager=False):
+    def search_repositories(self, query, sort, limit=1000, pager=False):
         """Search for all repos matching the given query.
 
         :type query: str
@@ -1440,54 +1280,8 @@ class GitHub(object):
         
         self.repositories(repositories, limit, pager, sort=False)
 
-
-    @authenticate
-    def search_repositories(self, query, sort, limit=1000, pager=False):
-        """Search for all repos matching the given query.
-
-        :type query: str
-        :param query: The search query.
-
-        :type sort: str
-        :param sort: Optional: 'stars', 'forks', 'updated'.
-            If not specified, sorting is done by query best match.
-
-        :type limit: int
-        :param limit: The number of items to display.
-
-        :type pager: bool
-        :param pager: Determines whether to show the output in a pager,
-            if available.
-        """
-        click.secho('Searching for all matching repos on GitHub...',
-                    fg=self.config.clr_message)
-        results = self.config.api.search_repositories(query, sort)
-        repos = []
-        for result in results:
-            repos.append(result.repository)
-        self.repositories(repos, limit, pager, sort=False)
-
-
     @authenticate
     def starred(self, repo_filter, limit=1000, pager=False):
-        """Output starred repos.
-        :type repo_filter: str
-        :param repo_filter:  The filter for repo names.
-            Only repos matching the filter will be returned.
-            If None, outputs all starred repos.
-        :type limit: int
-        :param limit: The number of items to display.
-        :type pager: bool
-        :param pager: Determines whether to show the output in a pager,
-            if available.
-        """
-        self.repositories(self.config.api.starred(),
-                          limit,
-                          pager,
-                          repo_filter.lower())
-
-    @authenticate
-    def starred_graphQL(self, repo_filter, limit=1000, pager=False):
         """Output starred repos.
 
         :type repo_filter: str
@@ -1628,7 +1422,7 @@ class GitHub(object):
                 pager=pager)
 
     @authenticate
-    def user_graphQL(self, user_id, browser=False, text_avatar=False,
+    def user(self, user_id, browser=False, text_avatar=False,
              limit=1000, pager=False):
         """List information about the logged in user.
 
@@ -1655,25 +1449,28 @@ class GitHub(object):
         """
 
         queryType="""
-        query type($query:String!){
-        search(query:$query, type:USER, first:100){
-            nodes{
-            ... on Actor{
-                __typename
-            }
+        query type($queryUser:String!){
+            search(query:$queryUser, type:USER, first:100){
+                nodes{
+                    ... on Actor{
+                    __typename
+                }
             }
         }
         }
         """
-        jsonType={
-            "query":queryType,"variable":{
-                "query": "user:" + user_id
-            } 
+
+        jsonType = {
+            "query": queryType, "variables":{
+            "queryUser": "user:" + user_id
+            }
         }
+
 
         queryUser="""
         query findUser($user:String!){
         user(login:$user){
+            avatarUrl
             login
             company
             location
@@ -1733,9 +1530,8 @@ class GitHub(object):
         }
         }
         """
-
         jsonUser={
-            "query":queryUser,"variable":{
+            "query":queryUser,"variables":{
                 "user": user_id
             } 
         }
@@ -1743,6 +1539,7 @@ class GitHub(object):
         queryOrgs="""
         query findOrganization($org:String!){
         organization(login:$org){
+            avatarUrl
             login
             location
             email
@@ -1772,114 +1569,79 @@ class GitHub(object):
         """
 
         jsonOrgs={
-            "query":queryOrgs,"variable":{
+            "query":queryOrgs,"variables":{
                 "org": user_id
             } 
         }
 
-
+        result = self.__run_query(jsonType)
+        
         if browser:
             webbrowser.open(self.base_url + user_id)
         else:
-            user = self.config.api.user(user_id)
-            if type(user) is null.NullObject:
+            if result["data"] is None:
                 click.secho('Invalid user.', fg=self.config.clr_error)
                 return
             output = ''
-            output += click.style(self.avatar_setup(user.avatar_url,
-                                                    text_avatar))
-            output += click.style(user.login + '\n', fg=self.config.clr_primary)
-            if user.company is not None:
-                output += click.style(user.company + '\n',
-                                      fg=self.config.clr_secondary)
-            if user.location is not None:
-                output += click.style(user.location + '\n',
-                                      fg=self.config.clr_secondary)
-            if user.email is not None:
-                output += click.style(user.email + '\n',
-                                      fg=self.config.clr_secondary)
-            if user.type == 'Organization':
-                output += click.style('Organization\n\n',
-                                      fg=self.config.clr_tertiary)
+            actor = {}
+            if result["data"]["search"]["nodes"][0]["__typename"] == "User":
+                resultUser = self.__run_query(jsonUser) 
+                actor = resultUser["data"]["user"]
             else:
+                 resultUser = self.__run_query(jsonOrgs) 
+                 actor = resultUser["data"]["organization"]   
+
+            output += click.style(self.avatar_setup(actor["avatarUrl"], 
+                            text_avatar))
+
+            output += click.style(actor["login"] + '\n', fg=self.config.clr_primary)
+            if result["data"]["search"]["nodes"][0]["__typename"] == "User":
+                if actor["company"] is not None:
+                    output += click.style(actor["company"] + '\n',
+                                        fg=self.config.clr_secondary)
+            if actor["location"] is not None:
+                output += click.style(actor["location"] + '\n',
+                                    fg=self.config.clr_secondary)
+            if actor["email"] is not None:
+                output += click.style(actor["email"] + '\n',
+                                    fg=self.config.clr_secondary)
+            if result["data"]["search"]["nodes"][0]["__typename"] == "User":
                 output += click.style(
-                    'Followers: ' + str(user.followers_count) + ' | ',
+                    'Followers: ' + str(actor["followers"]["totalCount"]) + ' | ',
                     fg=self.config.clr_tertiary)
                 output += click.style(
-                    'Following: ' + str(user.following_count) + '\n\n',
+                    'Following: ' + str(actor["following"]["totalCount"]) + '\n\n',
                     fg=self.config.clr_tertiary)
-            output += self.repositories(self.config.api.repositories(user_id),
-                                        limit,
-                                        pager,
-                                        print_output=False)
-            if pager:
-                color = None
-                if platform.system() == 'Windows':
-                    color = True
-                click.echo_via_pager(output, color)
-            else:
-                click.secho(output)
+            
+            nodes = actor["repositories"]["nodes"]
 
-    @authenticate
-    def user(self, user_id, browser=False, text_avatar=False,
-             limit=1000, pager=False):
-        """List information about the logged in user.
+            repositories = []
 
-        :type user_id: str
-        :param user_id: The user id/login.
-            If None, returns followers of the logged in user.
+            for node in nodes:
+                owner = node["owner"]["login"]
+                name = node["name"]
+                if not node["primaryLanguage"]:
+                    primaryLanguage = None
+                else:
+                    primaryLanguage = node["primaryLanguage"]["name"]
+                stargazers_count = node["stargazers"]["totalCount"]
+                forks_count = node["forks"]["totalCount"]
+                updated_at = arrow.get(node["updatedAt"]).datetime
+                clone_url = node["url"]
+                full_name = node["nameWithOwner"]
+                if not node["description"]:
+                    description = None
+                else:
+                    description = node["description"]
 
-        :type browser: bool
-        :param browser: Determines whether to view the profile
-            in a browser, or in the terminal.
+                repositories.append(Repo(owner, name, primaryLanguage, stargazers_count, forks_count, updated_at, clone_url, full_name, description))
 
-        :type text_avatar: bool
-        :param text_avatar: Determines whether to view the profile
-            avatar in plain text instead of ansi (default).
-            On Windows this value is always set to True due to lack of
-            support of `img2txt` on Windows.
+                    
 
-        :type limit: int
-        :param limit: The number of items to display.
-
-        :type pager: bool
-        :param pager: Determines whether to show the output in a pager,
-            if available.
-        """
-        if browser:
-            webbrowser.open(self.base_url + user_id)
-        else:
-            user = self.config.api.user(user_id)
-            if type(user) is null.NullObject:
-                click.secho('Invalid user.', fg=self.config.clr_error)
-                return
-            output = ''
-            output += click.style(self.avatar_setup(user.avatar_url,
-                                                    text_avatar))
-            output += click.style(user.login + '\n', fg=self.config.clr_primary)
-            if user.company is not None:
-                output += click.style(user.company + '\n',
-                                      fg=self.config.clr_secondary)
-            if user.location is not None:
-                output += click.style(user.location + '\n',
-                                      fg=self.config.clr_secondary)
-            if user.email is not None:
-                output += click.style(user.email + '\n',
-                                      fg=self.config.clr_secondary)
-            if user.type == 'Organization':
-                output += click.style('Organization\n\n',
-                                      fg=self.config.clr_tertiary)
-            else:
-                output += click.style(
-                    'Followers: ' + str(user.followers_count) + ' | ',
-                    fg=self.config.clr_tertiary)
-                output += click.style(
-                    'Following: ' + str(user.following_count) + '\n\n',
-                    fg=self.config.clr_tertiary)
-            output += self.repositories(self.config.api.repositories(user_id),
-                                        limit,
-                                        pager,
-                                        print_output=False)
+            output += self.repositories(repositories,
+                                    limit,
+                                    pager,
+                                    print_output=False)
             if pager:
                 color = None
                 if platform.system() == 'Windows':
