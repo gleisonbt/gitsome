@@ -38,10 +38,10 @@ from .web_viewer import WebViewer
 from .utils import TextUtils
 
 import requests
-
 from requests.auth import HTTPBasicAuth
-
 import arrow
+from .wrapper_graphQL import *
+
 
 class User:
     def __init__(self, login=None, company=None, location=None, email=None,
@@ -55,30 +55,6 @@ class User:
         self.following_count = following_count
 
 
-
-class Issue:
-    def __init__(self, number=None, title=None, comments_count=None, state=None, assignee=None, user=None, created_at=None, repository=None, id=None):
-        self.title = title
-        self.number = number
-        self.comments_count = comments_count
-        self.state = state
-        self.assignee = assignee
-        self.user = user
-        self.created_at = created_at
-        self.repository = repository
-        self.id = id
-
-class Repo:
-    def __init__(self, owner=None, name=None, language=None, stargazers_count=None, forks_count=None, updated_at=None, clone_url=None, full_name=None, description=None):
-        self.owner = owner
-        self.name = name
-        self.language = language
-        self.stargazers_count = stargazers_count
-        self.forks_count = forks_count
-        self.updated_at = updated_at
-        self.clone_url = clone_url
-        self.full_name = full_name
-        self.description = description
 
 
 class GitHub(object):
@@ -120,18 +96,6 @@ class GitHub(object):
     def base_url(self):
         return self.config.enterprise_url or self._base_url
 
-
-    def __run_query(self, query):
-        URL = 'https://api.github.com/graphql'
-        #headers = {"Authorization": "Bearer e1a886a63a2e7cb1b3486dbc8a939b79b0be1c6c"}
-        headers = {"Authorization": "Bearer "+self.config.user_token}
-
-        request = requests.post(URL, json=query,headers=headers)
-
-        if request.status_code == 200:
-            return request.json()
-        else:
-            raise Exception("Query failed to run by returning code of {}.")
 
     def add_base_url(self, url):
         """Add the base url if it is not already part of the given url.
@@ -266,62 +230,8 @@ class GitHub(object):
                         fg=self.config.clr_error)
             return
 
-        
-        query = """
-            query findIssue($query:String!){
-                search(query:$query, type:ISSUE, first:100){
-                    nodes{
-                    ... on Issue{
-                        id
-                        number
-                        repository{
-                        name
-                        }
-                    }
-                    }
-                }
-            }
-        """
 
-        json = {
-            "query": query, "variables":{
-                "query": "is:issue user:" + user + " repo:" + repo
-            }
-        }
-
-
-        result = self.__run_query(json)
-
-
-        nodes = result["data"]["search"]["nodes"]
-
-
-        for node in nodes:
-            if node["number"] == int(number) and node["repository"]["name"] == repo:
-                issue_id = node["id"]
-    
-        mutation = """
-            mutation addCommentIssue($subjectId:ID!, $body:String!, $clientMutationId:String!){
-                addComment(input:{subjectId:$subjectId, body:$body, clientMutationId:$clientMutationId}){
-                    commentEdge{
-                    node{
-                        body
-                    }
-                    }
-                }
-            }
-        """
-
-        json = {
-            "query": mutation, "variables":{
-                "subjectId": issue_id,
-                "body": text,
-                "clientMutationId": "1"
-            }
-        }
-
-
-        issue_comment = self.__run_query(json)
+        issue_comment = create_comment(self, user, repo, number, text)
 
         if issue_comment["data"] is not None:
             click.secho('Created comment: ' + issue_comment["data"]["addComment"]["commentEdge"]["node"]["body"],
@@ -330,12 +240,6 @@ class GitHub(object):
             click.secho('Error creating comment',
                         fg=self.config.clr_error)
 
-        # if type(issue_comment) is not null.NullObject:
-        #     click.secho('Created comment: ' + issue_comment.body,
-        #                 fg=self.config.clr_message)
-        # else:
-        #     click.secho('Error creating comment',
-        #                 fg=self.config.clr_error)
 
     @authenticate
     def create_issue(self, user_repo, issue_title, issue_desc=''):
@@ -477,28 +381,7 @@ class GitHub(object):
         if user is None:
             user = self.config.user_login
 
-        query = """
-            query userFollowers($user:String!){
-                user(login: $user){
-                    followers(first:100){
-                    nodes{
-                        login
-                    }
-                    }
-                }
-            }
-        """
-
-        json = {
-            "query": query, "variables":{
-                "user": user
-            }
-        }
-
-
-        result = self.__run_query(json)
-
-        followers = result["data"]["user"]["followers"]["nodes"]
+        followers = followers_list(self, user, pager=False)["data"]["user"]["followers"]["nodes"]
         followers = [User(follower["login"]) for follower in followers]
 
         self.table.build_table_setup_user(
@@ -522,28 +405,8 @@ class GitHub(object):
         if user is None:
             user = self.config.user_login
 
-        query = """
-            query userFollowing($user:String!){
-                user(login: $user){
-                    following(first:100){
-                    nodes{
-                        login
-                    }
-                    }
-                }
-            }
-        """
 
-        json = {
-            "query": query, "variables":{
-                "user": user
-            }
-        }
-
-
-        result = self.__run_query(json)
-
-        followings = result["data"]["user"]["following"]["nodes"]
+        followings = following_list(self, user, pager=False)["data"]["user"]["following"]["nodes"]
         followings = [User(following["login"]) for following in followings]
         
 
@@ -668,58 +531,8 @@ class GitHub(object):
             if available.
         """
 
-        if issue_filter == 'subscribed':
-            issue_filter = 'involves'
-        elif issue_filter == 'assigned':
-            issue_filter = 'assignee'
-        elif issue_filter == 'created':
-            issue_filter = 'author'
-        elif issue_filter == 'mentioned':
-            issue_filter = 'mentions'
-
-
-        query = """
-            query FindIssues($query:String!){
-                search(query:$query, type:ISSUE, first:100){
-                nodes{
-                ... on Issue{
-                    number
-                    author{
-                    login
-                    }
-                    title
-                    url
-                    state
-                    comments{
-                    totalCount
-                    }
-                    assignees(first:1){
-                    nodes{
-                        login
-                    }
-                    }
-                    createdAt
-                    repository{
-                    owner{
-                        login
-                    }
-                    name
-                    }
-                }
-                }
-            }
-            }
-        """
-
-        json = {
-            "query": query, "variables":{
-            "query": "is:issue is:" + issue_state + " " + issue_filter + ":"+self.config.user_login
-            }
-        }
-
-        result = self.__run_query(json)
-
-        nodes = result["data"]["search"]["nodes"]
+        
+        nodes = issues_list(self, issue_filter, issue_state, limit, pager)["data"]["search"]["nodes"]
 
         issues = []
 
@@ -817,40 +630,7 @@ class GitHub(object):
             if available.
         """
 
-        query1 = """
-        query findRepos{
-        viewer{
-            repositories(first:100){
-            nodes{
-                nameWithOwner
-                pullRequests{
-                totalCount
-                }
-            }
-            }
-            organizations(first:100){
-            nodes{
-                repositories(first:100){
-                    nodes{
-                    nameWithOwner
-                    pullRequests{
-                    totalCount
-                    }
-                    }  
-                }
-            }
-            }
-        }
-        }
-        """
-
-
-        json1 = {
-        "query": query1, "variables":{
-        }
-        }
-
-        result = self.__run_query(json1)
+        result = findRepos01(self)
 
 
         reposWithPRs = []
@@ -867,66 +647,8 @@ class GitHub(object):
                     reposWithPRs.append(repo["nameWithOwner"])
 
 
-        query2 = """
-        query findPullRequests($query:String!){
-        search(query:$query, first:100, type:ISSUE){
-            nodes{
-            ... on PullRequest{
-                number
-                            author{
-                            login
-                            }
-                            title
-                            url
-                            state
-                            comments{
-                            totalCount
-                            }
-                            assignees(first:1){
-                            nodes{
-                                login
-                            }
-                            }
-                            createdAt
-                            repository{
-                            owner{
-                                login
-                            }
-                            name
-                            }
-            }
-            }
-        }
-        }
-        """
-
-        json2 = {}
-        issues_list = []
-
-        for repo in reposWithPRs:
-            json2 = {
-                "query": query2, "variables":{
-                "query": "is:pr repo:"+reposWithPRs[0]
-                }
-            } 
-            result = self.__run_query(json2)
-            nodes = result["data"]["search"]["nodes"]
-
-            for node in nodes:
-                number = node["number"]
-                title = node["title"]
-                comments_count = node["comments"]["totalCount"]
-                state = node["state"]
-                if not node["assignees"]["nodes"]:
-                    assignee = None
-                else:
-                    assignee = node["assignees"]["nodes"][0]["login"]
-                user =  node["author"]["login"]
-                created_at = arrow.get(node["createdAt"]).datetime
-                repository = (node["repository"]["owner"]["login"],node["repository"]["name"])
-                issues_list.append(Issue(number, title, comments_count, state, assignee, user, created_at, repository))
-
-        self.issues(issues_list, limit, pager)
+        
+        self.issues(findPullRequests(self, reposWithPRs), limit, pager)
 
     @authenticate
     def rate_limit(self):
@@ -1006,67 +728,8 @@ class GitHub(object):
         :param pager: Determines whether to show the output in a pager,
             if available.
         """
-
-        query = """
-        query findRepos{
-            viewer{
-                repositories(first:100){
-                nodes{
-                    owner{
-                    login
-                    }
-                    name
-                    primaryLanguage{
-                    name
-                    }
-                    stargazers{
-                    totalCount
-                    }
-                    forks{
-                    totalCount
-                    }
-                    updatedAt
-                    url
-                    nameWithOwner
-                    description
-                }
-                }
-                organizations(first:100){
-                nodes{
-                    repositories(first:100){
-                        nodes{
-                    owner{
-                    login
-                    }
-                    name
-                    primaryLanguage{
-                    name
-                    }
-                    stargazers{
-                    totalCount
-                    }
-                    forks{
-                    totalCount
-                    }
-                    updatedAt
-                    url
-                    nameWithOwner
-                    description
-                }  
-                    }
-                }
-                }
-            }
-        }
-        """
-
-        json = {
-            "query": query, "variables":{
-            }    
-        }
-
-        result = self.__run_query(json)
-
+        result = findRepos02(self)
+        
         nodes = result["data"]["viewer"]["repositories"]["nodes"]
 
         nodesOrganizations = []
@@ -1131,50 +794,10 @@ class GitHub(object):
             if available.
         """
 
-        query1="""
-        query searchIssues($query:String!){
-            search(query:$query, type:ISSUE, first:100){
-                nodes{
-                ... on Issue{
-                    number
-                                author{
-                                login
-                                }
-                                title
-                                url
-                                state
-                                comments{
-                                totalCount
-                                }
-                                assignees(first:1){
-                                nodes{
-                                    login
-                                }
-                                }
-                                createdAt
-                                repository{
-                                owner{
-                                    login
-                                }
-                                name
-                                }
-                }
-                }
-            }
-        }
-        """
-
-        json = {
-            "query": query1, "variables":{
-            "query": query
-            }
-        }
-
         click.secho('Searching for all matching issues on GitHub...',
                     fg=self.config.clr_message)
         
-
-        result = self.__run_query(json)
+        result = findIssues(self, query)
 
         nodes = result["data"]["search"]["nodes"]
 
@@ -1215,44 +838,10 @@ class GitHub(object):
             if available.
         """
 
-        query1 = """
-        query searchRepositories($query:String!){
-            search(query:$query, type:REPOSITORY, first:100){
-            nodes{
-            ... on Repository{
-                owner{
-                            login
-                            }
-                            name
-                            primaryLanguage{
-                            name
-                            }
-                            stargazers{
-                            totalCount
-                            }
-                            forks{
-                            totalCount
-                            }
-                            updatedAt
-                            url
-                            nameWithOwner
-                            description
-            }
-            }
-        }
-        }
-        """
-
-        json = {
-            "query": query1, "variables":{
-                "query": query+" sort:"+sort
-            }    
-        }
-
         click.secho('Searching for all matching repos on GitHub...',
                     fg=self.config.clr_message)
 
-        result = self.__run_query(json)
+        result = findRepos03(self, query, sort)
 
         nodes = result["data"]["search"]["nodes"]
 
@@ -1296,40 +885,8 @@ class GitHub(object):
         :param pager: Determines whether to show the output in a pager,
             if available.
         """
-        query="""
-        query starred{
-            viewer{
-                starredRepositories(first:100){
-                    nodes{
-                    owner{
-                    login
-                    }
-                    name
-                    primaryLanguage{
-                    name
-                    }
-                    stargazers{
-                    totalCount
-                    }
-                    forks{
-                    totalCount
-                    }
-                    updatedAt
-                    url
-                    nameWithOwner
-                    description
-                }
-                }
-            }
-        }
-        """
-
-        json = {
-            "query": query, "variables":{
-            }    
-        }
-
-        result = self.__run_query(json)
+        
+        result = findStarred(self)
 
         nodes = result["data"]["viewer"]["starredRepositories"]["nodes"]
 
@@ -1447,155 +1004,22 @@ class GitHub(object):
         :param pager: Determines whether to show the output in a pager,
             if available.
         """
-
-        queryType="""
-        query type($queryUser:String!){
-            search(query:$queryUser, type:USER, first:100){
-                nodes{
-                    ... on Actor{
-                    __typename
-                }
-            }
-        }
-        }
-        """
-
-        jsonType = {
-            "query": queryType, "variables":{
-            "queryUser": "user:" + user_id
-            }
-        }
-
-
-        queryUser="""
-        query findUser($user:String!){
-        user(login:$user){
-            avatarUrl
-            login
-            company
-            location
-            email
-            followers{
-            totalCount
-            }
-            following{
-            totalCount
-            }
-            repositories(first:100){
-            nodes{
-                owner{
-                login
-                }
-                name
-                primaryLanguage{
-                name
-                }
-                stargazers{
-                totalCount
-                }
-                forks{
-                totalCount
-                }
-                updatedAt
-                url
-                nameWithOwner
-                description
-            }
-            }
-            organizations(first:100){
-            nodes{
-                repositories(first:100){
-                nodes{
-                    owner{
-                    login
-                    }
-                    name
-                    primaryLanguage{
-                    name
-                    }
-                    stargazers{
-                    totalCount
-                    }
-                    forks{
-                    totalCount
-                    }
-                    updatedAt
-                    url
-                    nameWithOwner
-                    description
-                }
-                }
-            }
-            }
-        }
-        }
-        """
-        jsonUser={
-            "query":queryUser,"variables":{
-                "user": user_id
-            } 
-        }
-
-        queryOrgs="""
-        query findOrganization($org:String!){
-        organization(login:$org){
-            avatarUrl
-            login
-            location
-            email
-            repositories(first:100){
-            nodes{
-                owner{
-                login
-                }
-                name
-                primaryLanguage{
-                name
-                }
-                stargazers{
-                totalCount
-                }
-                forks{
-                totalCount
-                }
-                updatedAt
-                url
-                nameWithOwner
-                description
-            }
-            }
-        }
-        }
-        """
-
-        jsonOrgs={
-            "query":queryOrgs,"variables":{
-                "org": user_id
-            } 
-        }
-
-        result = self.__run_query(jsonType)
         
         if browser:
             webbrowser.open(self.base_url + user_id)
         else:
-            if result["data"] is None:
+            actor = findUser(self, user_id)
+
+            if actor is None:
                 click.secho('Invalid user.', fg=self.config.clr_error)
                 return
             output = ''
-            actor = {}
-            if result["data"]["search"]["nodes"][0]["__typename"] == "User":
-                resultUser = self.__run_query(jsonUser) 
-                actor = resultUser["data"]["user"]
-            else:
-                 resultUser = self.__run_query(jsonOrgs) 
-                 actor = resultUser["data"]["organization"]   
 
             output += click.style(self.avatar_setup(actor["avatarUrl"], 
                             text_avatar))
 
             output += click.style(actor["login"] + '\n', fg=self.config.clr_primary)
-            if result["data"]["search"]["nodes"][0]["__typename"] == "User":
+            if userType(self,user_id) == "User":
                 if actor["company"] is not None:
                     output += click.style(actor["company"] + '\n',
                                         fg=self.config.clr_secondary)
@@ -1605,7 +1029,7 @@ class GitHub(object):
             if actor["email"] is not None:
                 output += click.style(actor["email"] + '\n',
                                     fg=self.config.clr_secondary)
-            if result["data"]["search"]["nodes"][0]["__typename"] == "User":
+            if userType(self,user_id) == "User":
                 output += click.style(
                     'Followers: ' + str(actor["followers"]["totalCount"]) + ' | ',
                     fg=self.config.clr_tertiary)
